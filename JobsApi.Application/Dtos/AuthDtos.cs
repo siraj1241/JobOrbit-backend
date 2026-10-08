@@ -2,6 +2,12 @@
 
 public record LoginDto(string Email, string Password);
 
+public record RegisterDto(
+    string Email,
+    string Password,
+    string ConfirmPassword,
+    string DisplayName);
+
 public record AuthResultDto(
     string AccessToken,
     string TokenType,
