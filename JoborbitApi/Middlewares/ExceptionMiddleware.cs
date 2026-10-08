@@ -14,6 +14,10 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
         {
             await Write(ctx, HttpStatusCode.Unauthorized, "Login failed", ex.Message);
         }
+        catch (ConflictException ex)
+        {
+            await Write(ctx, HttpStatusCode.Conflict, "Conflict", ex.Message);
+        }
         catch (DomainException ex)
         {
             await Write(ctx, HttpStatusCode.BadRequest, "Domain error", ex.Message);

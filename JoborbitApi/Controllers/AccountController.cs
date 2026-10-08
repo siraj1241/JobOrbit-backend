@@ -16,6 +16,20 @@ public class AccountController(IAuthService auth, ILogger<AccountController> log
     public async Task<IActionResult> Login([FromBody] LoginDto dto, CancellationToken ct)
         => Ok(await auth.LoginAsync(dto, ct));
 
+    [HttpPost("register")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(AuthResultDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> Register([FromBody] RegisterDto dto, CancellationToken ct)
+    {
+        var result = await auth.RegisterAsync(dto, ct);
+        return CreatedAtAction(
+            nameof(Me),
+            new { },
+            result);
+    }
+
     [HttpGet("me")]
     [Authorize]
     public IActionResult Me() => Ok(new
