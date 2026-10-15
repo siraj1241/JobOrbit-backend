@@ -18,6 +18,10 @@ public class ExceptionMiddleware(RequestDelegate next, ILogger<ExceptionMiddlewa
         {
             await Write(ctx, HttpStatusCode.Conflict, "Conflict", ex.Message);
         }
+        catch (NotFoundException ex)
+        {
+            await Write(ctx, HttpStatusCode.NotFound, "Not found", ex.Message);
+        }
         catch (DomainException ex)
         {
             await Write(ctx, HttpStatusCode.BadRequest, "Domain error", ex.Message);

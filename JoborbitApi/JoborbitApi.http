@@ -20,8 +20,28 @@ Content-Type: application/json
   "password": "Password@123"
 }
 
-### Get current user (requires Bearer token from login/register)
+### Get current user (requires Bearer token)
 GET {{JoborbitApi_HostAddress}}/api/account/me
 Authorization: Bearer <your-jwt-token-here>
 
-###
+### ─── Jobs API ───────────────────────────────────────
+
+### Live fetch jobs from external provider (Arbeitnow) — not persisted
+GET {{JoborbitApi_HostAddress}}/api/jobs/external?page=1&pageSize=20
+Accept: application/json
+
+### Live fetch with filters
+GET {{JoborbitApi_HostAddress}}/api/jobs/external?search=python&location=remote&remote=true&page=1
+Accept: application/json
+
+### Search locally cached jobs (with pagination & filters)
+GET {{JoborbitApi_HostAddress}}/api/jobs?search=developer&remote=true&page=1&pageSize=20
+Accept: application/json
+
+### Get a single cached job by ID
+GET {{JoborbitApi_HostAddress}}/api/jobs/3fa85f64-5717-4562-b3fc-2c963f66afa6
+Accept: application/json
+
+### Sync jobs from external provider into local DB (requires auth)
+POST {{JoborbitApi_HostAddress}}/api/jobs/sync?maxPages=2
+Authorization: Bearer <your-jwt-token-here>

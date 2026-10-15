@@ -1,6 +1,8 @@
 ﻿using JobsApi.Application.Abstractions;
 using JobsApi.Domain.Entities;
 using JobsApi.Infrastructure.Auth;
+using JobsApi.Infrastructure.ExternalJobs;
+using JobsApi.Infrastructure.Jobs;
 using JobsApi.Infrastructure.Options;
 using JobsApi.Infrastructure.Persistence;
 using JobsApi.Infrastructure.Repositories;
@@ -26,10 +28,23 @@ public static class ServiceCollectionExtensions
             .Validate(o => o.Secret.Length >= 32, "JWT secret must be at least 32 characters")
             .ValidateOnStart();
 
+        // External jobs options
+        services.AddOptions<ExternalJobsOptions>()
+            .Bind(config.GetSection(ExternalJobsOptions.Section))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // Repositories & services
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+
+        services.AddScoped<IJobRepository, JobRepository>();
+        services.AddScoped<IJobService, JobService>();
+
+        // HttpClient-based external provider (typed client + resilience)
+        services.AddHttpClient<IExternalJobProvider, ArbeitnowJobProvider>();
 
         return services;
     }

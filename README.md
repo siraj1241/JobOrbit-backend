@@ -49,6 +49,7 @@ JobOrbit-backend/
 ├── JoborbitApi/                          # 🌐 Presentation Layer (ASP.NET Core Web API)
 │   ├── Controllers/
 │   │   ├── AccountController.cs          #   /api/account → login, register, me
+│   │   ├── JobsController.cs             #   /api/jobs → external, search, sync, by-id
 │   │   └── WeatherForecastController.cs  #   sample controller (placeholder)
 │   │
 │   ├── Middlewares/
@@ -58,7 +59,7 @@ JobOrbit-backend/
 │   │   └── launchSettings.json          #   http://localhost:5087
 │   │
 │   ├── Program.cs                        #   App composition root (DI, JWT, Swagger, Serilog)
-│   ├── appsettings.json                  #   Connection string + JWT config
+│   ├── appsettings.json                  #   Connection string + JWT + ExternalJobs config
 │   ├── appsettings.Development.json
 │   └── JoborbitApi.http                  #   Sample requests for VS / Rider REST client
 │
@@ -66,25 +67,37 @@ JobOrbit-backend/
 │   ├── Abstractions/
 │   │   ├── IAuthService.cs               #   LoginAsync, RegisterAsync
 │   │   ├── IUserRepository.cs            #   GetByEmail, GetById, Add, Update, Exists
-│   │   └── ITokenService.cs              #   GenerateAccessToken(User)
+│   │   ├── ITokenService.cs              #   GenerateAccessToken(User)
+│   │   ├── IJobRepository.cs             #   GetById, GetByExternalId, Search, Upsert
+│   │   ├── IJobService.cs                #   GetExternal, Search, GetById, SyncFromExternal
+│   │   └── IExternalJobProvider.cs       #   FetchAsync (Abbeitnow contract)
 │   │
 │   ├── Dtos/
-│   │   └── AuthDtos.cs                    #   LoginDto, RegisterDto, AuthResultDto
+│   │   ├── AuthDtos.cs                    #   LoginDto, RegisterDto, AuthResultDto
+│   │   └── JobDtos.cs                    #   JobDto, JobsQueryDto, PagedResultDto, SyncResultDto
 │   │
 │   └── Validators/
 │       ├── LoginValidator.cs             #   FluentValidation rules for LoginDto
-│       └── RegisterValidator.cs          #   FluentValidation rules for RegisterDto
+│       ├── RegisterValidator.cs          #   FluentValidation rules for RegisterDto
+│       └── JobQueryValidators.cs          #   FluentValidation rules for JobsQueryDto
 │
 ├── JobsApi.Infrastructure/               # 🏗️ Implementation Layer
 │   ├── Auth/
 │   │   ├── AuthService.cs                #   Implements IAuthService (login + register)
 │   │   └── JwtTokenService.cs            #   Implements ITokenService (JWT generation)
 │   │
+│   ├── ExternalJobs/
+│   │   └── ArbeitnowJobProvider.cs       #   Implements IExternalJobProvider via HttpClient + retry
+│   │
+│   ├── Jobs/
+│   │   └── JobService.cs                 #   Implements IJobService (orchestrates fetch + sync)
+│   │
 │   ├── Repositories/
-│   │   └── UserRepository.cs             #   Implements IUserRepository (EF Core)
+│   │   ├── UserRepository.cs             #   Implements IUserRepository (EF Core)
+│   │   └── JobRepository.cs              #   Implements IJobRepository (EF Core + ILIKE search)
 │   │
 │   ├── Persistence/
-│   │   ├── JobsDbContext.cs              #   EF Core DbContext (User entity, unique email)
+│   │   ├── JobsDbContext.cs              #   EF Core DbContext (User + Job entities)
 │   │   └── DbSeeder.cs                  #   Seeds a test user on startup
 │   │
 │   ├── Migrations/                       #   EF Core migration history
@@ -92,17 +105,20 @@ JobOrbit-backend/
 │   │   ├── 20261008172255_AddSomething.cs
 │   │   ├── 20261008172519_SeedRoles.cs
 │   │   ├── 20261008172808_AddUserChanges.cs
+│   │   ├── 20261015120000_AddJobsEntity.cs
 │   │   └── JobsDbContextModelSnapshot.cs
 │   │
 │   ├── Options/
-│   │   └── JwtOptions.cs                 #   Strongly-typed Jwt config (validated on start)
+│   │   ├── JwtOptions.cs                 #   Strongly-typed Jwt config (validated on start)
+│   │   └── ExternalJobsOptions.cs        #   Arbeitnow API base URL, retry, timeout config
 │   │
 │   └── Extensions/
 │       └── ServiceCollectionExtensions.cs#   AddJobsApiInfrastructure() DI helper
 │
 ├── JobsApi.Domain/                       # 🧱 Domain Layer (pure C#, no dependencies)
 │   ├── Entities/
-│   │   └── User.cs                       #   User entity (Id, Email, PasswordHash, Role, ...)
+│   │   ├── User.cs                       #   User entity (Id, Email, PasswordHash, Role, ...)
+│   │   └── Job.cs                        #   Job entity (Id, ExternalId, Source, Title, ...)
 │   │
 │   └── Exceptions/
 │       └── DomainException.cs            #   Base + UnauthorizedException, NotFoundException, ConflictException
@@ -271,6 +287,103 @@ Authorization: Bearer <jwt-from-login-or-register>
 
 ---
 
+## 💼 Jobs API
+
+The Jobs API integrates with the **Arbeitnow public job board** (https://www.arbeitnow.com/api/job-board-api — no auth required) to provide live job listings, with optional local caching for fast search and filtering.
+
+All jobs endpoints live under `/api/jobs`.
+
+### 1. Live fetch from external provider (no persistence)
+Returns the latest jobs straight from Arbeitnow — no DB writes.
+```http
+GET /api/jobs/external?search=python&location=remote&remote=true&page=1&pageSize=20
+```
+**Query params** (all optional):
+- `search` — substring match on title, description, company name
+- `location` — substring match on location
+- `remote` — `true` / `false`
+- `page` (default 1) — page number
+- `pageSize` (default 20, max 50)
+
+**200 OK**
+```json
+{
+  "items": [
+    {
+      "id": "00000000-0000-0000-0000-000000000000",
+      "externalId": "12345",
+      "source": "Arbeitnow",
+      "title": "Senior Python Developer",
+      "companyName": "Acme Corp",
+      "description": "...",
+      "location": "Remote",
+      "remote": true,
+      "tags": ["python", "django", "aws"],
+      "jobTypes": ["full_time"],
+      "url": "https://www.arbeitnow.com/jobs/12345",
+      "publishedAt": "2026-10-15T10:00:00Z",
+      "cachedAt": "2026-10-15T11:00:00Z"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalItems": 1,
+  "totalPages": 1
+}
+```
+
+### 2. Search cached jobs (DB)
+Returns jobs previously synced into our local Postgres. Supports ILIKE search and tag filtering.
+```http
+GET /api/jobs?search=developer&remote=true&tag=python&page=1&pageSize=20
+```
+**Query params** (all optional):
+- `search`, `location`, `remote` — same as above
+- `tag` — substring match on the comma-separated tags field
+- `page` (default 1) — page number
+- `pageSize` (default 20, max 100)
+
+### 3. Get a single cached job
+```http
+GET /api/jobs/{id}
+```
+**200 OK** — same shape as one element of `items[]`
+**404 Not Found** — if the ID doesn't exist in our cache
+
+### 4. Sync external jobs into local DB
+Pulls the latest jobs from Arbeitnow and upserts them into the `Jobs` table. Use this to populate the cache periodically (e.g. via a cron job).
+```http
+POST /api/jobs/sync?maxPages=3
+Authorization: Bearer <jwt>
+```
+- `maxPages` (default 3, clamped to 1–10) — how many Arbeitnow pages to fetch
+- **Requires authentication** (any logged-in user; Admin recommended for production)
+
+**200 OK**
+```json
+{
+  "fetched": 150,
+  "added": 142,
+  "updated": 8,
+  "skipped": 0,
+  "syncedAt": "2026-10-15T11:30:00Z"
+}
+```
+
+### How external fetching works
+1. `ArbeitnowJobProvider` (typed `HttpClient`) calls `https://www.arbeitnow.com/api/job-board-api?page={n}`
+2. Response is deserialized into strongly-typed POCOs
+3. Built-in **exponential-backoff retry** (3 attempts, base delay 500 ms) on transient HTTP failures
+4. 4xx errors (except 429) fail fast as `DomainException` → 400 to caller
+5. Timeouts retry as transient failures
+
+### How sync works
+1. Iterate up to `maxPages` from Arbeitnow
+2. For each external job: if not in DB → insert; if in DB but changed → update; otherwise skip
+3. Returns summary counts in `SyncResultDto`
+
+---
+
 ## 🔑 JWT Token
 
 The JWT issued by `JwtTokenService` contains these claims:
@@ -353,13 +466,30 @@ dotnet test JoborbitApi.sln        # (no test project yet — see Roadmap)
 | `CreatedAt`     | `DateTime`  | UTC timestamp, default `DateTime.UtcNow`|
 | `LastLoginAt`   | `DateTime?` | Updated on every successful login        |
 
+### `Job`
+| Field           | Type        | Notes                                                |
+|-----------------|-------------|------------------------------------------------------|
+| `Id`            | `Guid`      | PK                                                   |
+| `ExternalId`    | `string`    | Provider's ID; unique together with `Source`         |
+| `Source`        | `string`    | `"Arbeitnow"`, max 50                                |
+| `Title`         | `string`    | Required, max 300                                     |
+| `CompanyName`   | `string`    | Required, max 200                                     |
+| `Description`   | `string`    | `text` (PostgreSQL), required                         |
+| `Location`      | `string`    | Required, max 200                                     |
+| `Remote`        | `bool`      | Indexed                                              |
+| `Tags`          | `string`    | Comma-separated, max 500                              |
+| `JobTypes`      | `string`    | Comma-separated, max 200                              |
+| `Url`           | `string`    | External listing URL, max 1000                        |
+| `PublishedAt`   | `DateTime`  | Original publish date from provider, indexed          |
+| `CachedAt`      | `DateTime`  | When we last refreshed the row                        |
+
 ---
 
 ## 🗺️ Roadmap
 
+- [x] External job API integration (Arbeitnow — live fetch + sync)
 - [ ] Refresh tokens (rotating) + token revocation
 - [ ] Role-based authorization (`Admin`, `Employer`, `JobSeeker`)
-- [ ] Job listings CRUD (Employer posts, Seeker browses)
 - [ ] Job applications flow (apply, status, history)
 - [ ] Email confirmation on registration
 - [ ] Password reset flow (token-based)
