@@ -132,7 +132,7 @@ public class ArbeitnowJobProvider : IExternalJobProvider
     {
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
         var payload = await JsonSerializer.DeserializeAsync<ArbeitnowResponse>(stream, JsonOpts, ct);
-        return payload ?? new ArbeitnowResponse(Array.Empty<ArbeitnowJob>(), 0);
+        return payload ?? new ArbeitnowResponse(Array.Empty<ArbeitnowJob>());
     }
 
     private static ExternalJobDto MapToDto(ArbeitnowJob j) => new(
@@ -145,16 +145,28 @@ public class ArbeitnowJobProvider : IExternalJobProvider
         Tags: (j.Tags ?? Array.Empty<string>()).ToList(),
         JobTypes: (j.JobTypes ?? Array.Empty<string>()).ToList(),
         Url: j.Url ?? string.Empty,
-        PublishedAt: ParseDate(j.CreatedAt),
+        PublishedAt: ParseEpoch(j.CreatedAt),
         Source: "Arbeitnow");
+
+    /// <summary>Arbeitnow returns created_at as a Unix epoch (seconds since 1970).</summary>
+    private static DateTime ParseEpoch(long? epoch) =>
+        epoch.HasValue
+            ? DateTimeOffset.FromUnixTimeSeconds(epoch.Value).UtcDateTime
+            : DateTime.UtcNow;
 
     private static DateTime ParseDate(string? iso)
         => DateTime.TryParse(iso, out var d) ? d : DateTime.UtcNow;
 
     // --- POCOs matching the Arbeitnow JSON contract ---
+    // Top-level response: { "data": [...jobs], "links": {...}, "meta": {...} }
+    // We only need the "data" array. The Count field is for our fallback only.
     private sealed record ArbeitnowResponse(
-        ArbeitnowJob[] Jobs,
-        int Count);
+        [property: System.Text.Json.Serialization.JsonPropertyName("data")]
+        ArbeitnowJob[]? Jobs)
+    {
+        public ArbeitnowResponse() : this(null) { }
+        public ArbeitnowResponse(ArbeitnowJob[] jobs) : this(jobs) { }
+    }
 
     private sealed record ArbeitnowJob
     {
@@ -168,6 +180,10 @@ public class ArbeitnowJobProvider : IExternalJobProvider
         public string? Url { get; init; }
         public string[]? Tags { get; init; }
         public string[]? JobTypes { get; init; }
-        public string? CreatedAt { get; init; }
+
+        // Arbeitnow returns created_at as a Unix epoch integer (e.g. 1792081863),
+        // not an ISO 8601 string. Use a JsonNumberHandling that allows conversion
+        // OR read it as a long and convert manually.
+        public long? CreatedAt { get; init; }
     }
 }

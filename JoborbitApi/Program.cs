@@ -95,12 +95,43 @@ builder.Services
 builder.Services.AddAuthorization();
 
 // ─────────────────────────────────────────────────────────
+//  CORS — allow any *.onrender.com subdomain (for the frontend) plus
+//  localhost for local development. This avoids hardcoding the exact
+//  frontend URL since Render assigns random suffixes.
+// ─────────────────────────────────────────────────────────
+const string CorsPolicyName = "joborbit-frontend";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(CorsPolicyName, policy =>
+    {
+        policy.SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrEmpty(origin)) return false;
+                // Allow any Render subdomain
+                if (origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    && origin.EndsWith(".onrender.com", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                // Allow localhost on any port (dev only)
+                if (origin.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                return false;
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+// ─────────────────────────────────────────────────────────
 //  Build the app pipeline
 // ─────────────────────────────────────────────────────────
 var app = builder.Build();
 
 // Global exception handler → ProblemDetails
 app.UseMiddleware<ExceptionMiddleware>();
+
+// CORS must be called BEFORE auth and endpoint routing
+app.UseCors(CorsPolicyName);
 
 // Lightweight health probe for Render / Docker / k8s
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
