@@ -35,9 +35,9 @@ public record PagedResultDto<T>(
 
 /// <summary>Search parameters for the external job board.</summary>
 public record ExternalJobsQueryDto(
-    string? Search,
-    string? Location,
-    bool? Remote,
+    string? Search = null,
+    string? Location = null,
+    bool? Remote = null,
     int Page = 1,
     int PageSize = 20);
 

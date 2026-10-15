@@ -80,7 +80,7 @@ public class ArbeitnowJobProvider : IExternalJobProvider
 
         _logger.LogInformation(
             "Arbeitnow returned {Total} jobs for page {Page} (filtered to {Returned}).",
-            jobs.Count, page, dtos.Count);
+            jobs.Length, page, dtos.Count);
 
         return dtos;
     }
