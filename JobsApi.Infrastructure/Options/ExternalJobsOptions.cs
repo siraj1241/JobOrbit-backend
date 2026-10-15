@@ -2,28 +2,36 @@ using System.ComponentModel.DataAnnotations;
 
 namespace JobsApi.Infrastructure.Options;
 
-/// <summary>Configuration for the Arbeitnow external job-board provider.</summary>
+/// <summary>Configuration for the external job-board providers.</summary>
 public class ExternalJobsOptions
 {
     public const string Section = "ExternalJobs";
 
-    /// <summary>Base URL of the Arbeitnow API.</summary>
+    // Arbeitnow
     [Required]
     public string ArbeitnowBaseUrl { get; set; } = "https://www.arbeitnow.com/api/job-board-api";
 
-    /// <summary>HTTP timeout in seconds.</summary>
+    // TheMuse
+    public string TheMuseApiKey { get; set; } = string.Empty;     // optional — public API works without
+
+    // Adzuna
+    public string AdzunaAppId { get; set; } = string.Empty;       // required for Adzuna
+    public string AdzunaAppKey { get; set; } = string.Empty;      // required for Adzuna
+
+    // Common HTTP behavior
     [Range(5, 120)]
     public int TimeoutSeconds { get; set; } = 30;
 
-    /// <summary>How many HTTP retries on transient failures.</summary>
     [Range(0, 5)]
     public int MaxRetries { get; set; } = 3;
 
-    /// <summary>Per-retry delay (milliseconds) — exponential backoff multiplier.</summary>
     [Range(100, 10000)]
     public int RetryBaseDelayMs { get; set; } = 500;
 
-    /// <summary>Default page size when syncing.</summary>
     [Range(10, 100)]
     public int SyncPageSize { get; set; } = 50;
+
+    // OpenAI (resume builder)
+    public string OpenAiApiKey { get; set; } = string.Empty;     // required for AI bullet generation
+    public string OpenAiModel { get; set; } = "gpt-4o-mini";
 }

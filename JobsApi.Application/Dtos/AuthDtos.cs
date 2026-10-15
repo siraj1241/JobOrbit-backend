@@ -8,6 +8,8 @@ public record RegisterDto(
     string ConfirmPassword,
     string DisplayName);
 
+public record UpgradeToEmployerDto(string CompanyName);
+
 public record AuthResultDto(
     string AccessToken,
     string TokenType,

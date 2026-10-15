@@ -114,14 +114,15 @@ var app = builder.Build();
 // Global exception handler → ProblemDetails
 app.UseMiddleware<ExceptionMiddleware>();
 
+// Lightweight health probe for Render / Docker / k8s
+app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp: DateTime.UtcNow }));
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+    app.UseHttpsRedirection();
 }
-
-app.UseHttpsRedirection();
-app.UseCors("Frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

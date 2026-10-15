@@ -516,3 +516,72 @@ MIT — feel free to use, modify, and distribute.
 ---
 
 > Built and maintained by [@siraj1241](https://github.com/siraj1241)
+
+---
+
+## 🐳 Docker & Deploy to Render
+
+### Build & run locally with Docker
+
+```bash
+# Backend
+docker build -t joborbit-api .
+docker run -p 5087:8080 \
+  -e ConnectionStrings__DefaultConnection="Host=your-postgres-host;Port=5432;..." \
+  -e Jwt__Secret="at-least-32-char-secret" \
+  -e Jwt__Issuer=JobOrbit \
+  -e Jwt__Audience=JobOrbit.Clients \
+  joborbit-api
+```
+
+The container listens on port **8080** (override with `ASPNETCORE_URLS=http://+:<port>` if needed).
+
+### Full stack with docker-compose
+
+```bash
+# from the parent dir that contains both JobOrbit-backend and JobOrbit-frontend
+docker compose up --build
+```
+
+Brings up Postgres (5432), backend (5087), and frontend (3000).
+
+### One-click Deploy to Render (Blueprint)
+
+1. Push the backend repo to GitHub.
+2. In Render Dashboard → **New → Blueprint**.
+3. Pick the repo — Render auto-detects `render.yaml`.
+4. Set these **secret** env vars when prompted:
+   - `Jwt__Secret` — at least 32 random characters
+   - `ExternalJobs__OpenAiApiKey` — your OpenAI API key (optional — only for AI resume bullets)
+   - `ExternalJobs__AdzunaAppId` + `AdzunaAppKey` — optional, only for Adzuna jobs
+5. Render provisions:
+   - PostgreSQL 16 database (`joborbit-db`)
+   - Web Service running the backend Docker image (`joborbit-api`)
+6. The DB schema auto-migrates on container startup (`SeedTestUserAsync` runs `MigrateAsync`).
+
+### Manual Deploy to Render (without Blueprint)
+
+1. **New → Web Service** → pick the GitHub repo.
+2. **Environment:** Docker.
+3. **Dockerfile path:** `./Dockerfile`.
+4. **Health check path:** `/health`.
+5. **Environment variables:**
+   | Key | Value |
+   |---|---|
+   | `ASPNETCORE_ENVIRONMENT` | `Production` |
+   | `ConnectionStrings__DefaultConnection` | (Render's internal Postgres URL) |
+   | `Jwt__Secret` | (≥32 char random string) |
+   | `Jwt__Issuer` | `JobOrbit` |
+   | `Jwt__Audience` | `JobOrbit.Clients` |
+   | `ExternalJobs__OpenAiApiKey` | (your OpenAI key, optional) |
+
+### Configuration via env vars
+
+Every `appsettings.json` value can be overridden by an env var using the `__` separator:
+
+| `appsettings.json` path | Env var override |
+|---|---|
+| `ConnectionStrings:DefaultConnection` | `ConnectionStrings__DefaultConnection` |
+| `Jwt:Secret` | `Jwt__Secret` |
+| `ExternalJobs:AdzunaAppId` | `ExternalJobs__AdzunaAppId` |
+| `ExternalJobs:OpenAiApiKey` | `ExternalJobs__OpenAiApiKey` |

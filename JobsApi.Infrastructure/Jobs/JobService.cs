@@ -1,23 +1,31 @@
+using System.Text.Json;
 using JobsApi.Application.Abstractions;
 using JobsApi.Application.Dtos;
 using JobsApi.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace JobsApi.Infrastructure.Jobs;
 
 public class JobService : IJobService
 {
-    private readonly IExternalJobProvider _provider;
+    private readonly IExternalJobAggregator _aggregator;
     private readonly IJobRepository _jobs;
+    private readonly IInternalJobRepository _internalJobs;
+    private readonly IUserRepository _users;
     private readonly ILogger<JobService> _logger;
 
     public JobService(
-        IExternalJobProvider provider,
+        IExternalJobAggregator aggregator,
         IJobRepository jobs,
+        IInternalJobRepository internalJobs,
+        IUserRepository users,
         ILogger<JobService> logger)
     {
-        _provider = provider;
+        _aggregator = aggregator;
         _jobs = jobs;
+        _internalJobs = internalJobs;
+        _users = users;
         _logger = logger;
     }
 
@@ -25,7 +33,7 @@ public class JobService : IJobService
         ExternalJobsQueryDto query,
         CancellationToken ct)
     {
-        var external = await _provider.FetchAsync(query, ct);
+        var external = await _aggregator.FetchAllAsync(query, ct);
         var items = external.Select(MapExternalToDto).ToList();
         var total = items.Count;
 
@@ -41,27 +49,36 @@ public class JobService : IJobService
         JobsQueryDto query,
         CancellationToken ct)
     {
-        var (items, total) = await _jobs.SearchAsync(
-            query.Search,
-            query.Location,
-            query.Remote,
-            query.Tag,
-            query.Page,
-            query.PageSize,
-            ct);
+        // Pull from BOTH the external cache (synced jobs) AND internal published jobs
+        var (cachedItems, cachedTotal) = await _jobs.SearchAsync(
+            query.Search, query.Location, query.Remote, query.Tag,
+            query.Page, query.PageSize, ct);
 
-        var dtos = items.Select(MapToDto).ToList();
+        var (internalItems, internalTotal) = await _internalJobs.SearchPublishedAsync(
+            query.Search, query.Location, query.Remote, query.Tag,
+            query.Page, query.PageSize, ct);
+
+        // Merge both sources, sort by published date desc, take a page
+        var merged = cachedItems.Select(MapToDto)
+            .Concat(internalItems.Select(MapInternalToDto))
+            .OrderByDescending(j => j.PublishedAt)
+            .ToList();
 
         return new PagedResultDto<JobDto>(
-            Items: dtos,
+            Items: merged,
             Page: query.Page,
             PageSize: query.PageSize,
-            TotalItems: total,
-            TotalPages: (int)Math.Ceiling(total / (double)Math.Max(1, query.PageSize)));
+            TotalItems: cachedTotal + internalTotal,
+            TotalPages: (int)Math.Ceiling((cachedTotal + internalTotal) / (double)Math.Max(1, query.PageSize)));
     }
 
     public async Task<JobDto?> GetByIdAsync(Guid id, CancellationToken ct)
     {
+        // Try internal job first (since external cached jobs use Guid too, but IDs never overlap
+        // in practice — internal jobs come from employer UI, external from Arbeitnow sync).
+        var internalJob = await _internalJobs.GetByIdAsync(id, ct);
+        if (internalJob != null) return MapInternalToDto(internalJob);
+
         var job = await _jobs.GetByIdAsync(id, ct);
         return job is null ? null : MapToDto(job);
     }
@@ -69,7 +86,6 @@ public class JobService : IJobService
     public async Task<SyncResultDto> SyncFromExternalAsync(int maxPages, CancellationToken ct)
     {
         maxPages = Math.Clamp(maxPages, 1, 10);
-
         var totalFetched = 0;
         var added = 0;
         var updated = 0;
@@ -79,7 +95,7 @@ public class JobService : IJobService
         {
             ct.ThrowIfCancellationRequested();
 
-            var external = await _provider.FetchAsync(
+            var external = await _aggregator.FetchAllAsync(
                 new ExternalJobsQueryDto(Page: page, PageSize: 50), ct);
 
             if (external.Count == 0)
@@ -92,11 +108,12 @@ public class JobService : IJobService
 
             foreach (var ext in external)
             {
-                var existing = await _jobs.GetByExternalIdAsync(ext.ExternalId, _provider.Name, ct);
+                var source = ext.Source ?? "External";
+                var existing = await _jobs.GetByExternalIdAsync(ext.ExternalId, source, ct);
 
                 if (existing is null)
                 {
-                    var job = MapToEntity(ext, _provider.Name);
+                    var job = MapToEntity(ext, source);
                     await _jobs.UpsertAsync(job, ct);
                     added++;
                 }
@@ -114,8 +131,7 @@ public class JobService : IJobService
                 }
             }
 
-            _logger.LogInformation(
-                "Synced page {Page}: {Count} jobs (added={Added}, updated={Updated}).",
+            _logger.LogInformation("Synced page {Page}: {Count} jobs (added={Added}, updated={Updated}).",
                 page, external.Count, added, updated);
         }
 
@@ -126,6 +142,53 @@ public class JobService : IJobService
             Skipped: skipped,
             SyncedAt: DateTime.UtcNow);
     }
+
+    // ─── Mapping helpers ──────────────────────────────────────────
+
+    private static JobDto MapExternalToDto(ExternalJobDto ext) => new(
+        Id: Guid.Empty,
+        ExternalId: ext.ExternalId,
+        Source: ext.Source ?? "External",
+        Title: ext.Title,
+        CompanyName: ext.CompanyName,
+        Description: ext.Description,
+        Location: ext.Location,
+        Remote: ext.Remote,
+        Tags: ext.Tags,
+        JobTypes: ext.JobTypes,
+        Url: ext.Url,
+        PublishedAt: ext.PublishedAt,
+        CachedAt: DateTime.UtcNow);
+
+    private static JobDto MapToDto(Job j) => new(
+        Id: j.Id,
+        ExternalId: j.ExternalId,
+        Source: j.Source,
+        Title: j.Title,
+        CompanyName: j.CompanyName,
+        Description: j.Description,
+        Location: j.Location,
+        Remote: j.Remote,
+        Tags: SplitCsv(j.Tags),
+        JobTypes: SplitCsv(j.JobTypes),
+        Url: j.Url,
+        PublishedAt: j.PublishedAt,
+        CachedAt: j.CachedAt);
+
+    private static JobDto MapInternalToDto(InternalJob j) => new(
+        Id: j.Id,
+        ExternalId: j.Id.ToString(),
+        Source: "Internal",
+        Title: j.Title,
+        CompanyName: "",            // resolved by caller via EmployerId → user.DisplayName
+        Description: j.Description,
+        Location: j.Location,
+        Remote: j.Remote,
+        Tags: SplitCsv(j.TagsCsv),
+        JobTypes: new[] { j.EmploymentType },
+        Url: j.ApplicationUrl ?? "",
+        PublishedAt: j.CreatedAt,
+        CachedAt: j.UpdatedAt);
 
     private static Job MapToEntity(ExternalJobDto ext, string source) => new()
     {
@@ -156,36 +219,6 @@ public class JobService : IJobService
         existing.PublishedAt = ext.PublishedAt;
         existing.CachedAt = DateTime.UtcNow;
     }
-
-    private static JobDto MapExternalToDto(ExternalJobDto ext) => new(
-        Id: Guid.Empty,                  // external jobs have no local ID yet
-        ExternalId: ext.ExternalId,
-        Source: "Arbeitnow",
-        Title: ext.Title,
-        CompanyName: ext.CompanyName,
-        Description: ext.Description,
-        Location: ext.Location,
-        Remote: ext.Remote,
-        Tags: ext.Tags,
-        JobTypes: ext.JobTypes,
-        Url: ext.Url,
-        PublishedAt: ext.PublishedAt,
-        CachedAt: DateTime.UtcNow);
-
-    private static JobDto MapToDto(Job j) => new(
-        Id: j.Id,
-        ExternalId: j.ExternalId,
-        Source: j.Source,
-        Title: j.Title,
-        CompanyName: j.CompanyName,
-        Description: j.Description,
-        Location: j.Location,
-        Remote: j.Remote,
-        Tags: SplitCsv(j.Tags),
-        JobTypes: SplitCsv(j.JobTypes),
-        Url: j.Url,
-        PublishedAt: j.PublishedAt,
-        CachedAt: j.CachedAt);
 
     private static IReadOnlyList<string> SplitCsv(string? value) =>
         string.IsNullOrWhiteSpace(value)

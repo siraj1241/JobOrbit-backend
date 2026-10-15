@@ -6,6 +6,7 @@ using JobsApi.Infrastructure.Jobs;
 using JobsApi.Infrastructure.Options;
 using JobsApi.Infrastructure.Persistence;
 using JobsApi.Infrastructure.Repositories;
+using JobsApi.Infrastructure.Resumes;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -34,17 +35,30 @@ public static class ServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
-        // Repositories & services
+        // Repositories & services (auth)
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<ITokenService, JwtTokenService>();
         services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 
+        // Repositories & services (external jobs)
         services.AddScoped<IJobRepository, JobRepository>();
         services.AddScoped<IJobService, JobService>();
+        services.AddScoped<IExternalJobAggregator, ExternalJobAggregator>();
 
-        // HttpClient-based external provider (typed client + resilience)
+        // Each provider is a typed HttpClient
         services.AddHttpClient<IExternalJobProvider, ArbeitnowJobProvider>();
+        services.AddHttpClient<IExternalJobProvider, HimalayasJobProvider>();
+        services.AddHttpClient<IExternalJobProvider, TheMuseJobProvider>();
+        services.AddHttpClient<IExternalJobProvider, AdzunaJobProvider>();
+
+        // Internal jobs (employer)
+        services.AddScoped<IInternalJobRepository, InternalJobRepository>();
+        services.AddScoped<IInternalJobService, InternalJobService>();
+
+        // Resumes
+        services.AddScoped<IResumeRepository, ResumeRepository>();
+        services.AddScoped<IResumeService, ResumeService>();
 
         return services;
     }
