@@ -148,6 +148,61 @@ app.UseCors(CorsPolicyName);
 // Lightweight health probe for Render / Docker / k8s
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
+// ─────────────────────────────────────────────────────────
+//  DB diagnostic endpoint — helps debug "login returns 500" issues.
+//  Tells you EXACTLY what connection string the app is using and
+//  whether it can actually reach the database.
+// ─────────────────────────────────────────────────────────
+app.MapGet("/debug/db", async (IConfiguration config, IServiceProvider sp) =>
+{
+    var connStr = config.GetConnectionString("DefaultConnection") ?? "(not set)";
+    // Mask the password in the connection string for safety
+    var masked = System.Text.RegularExpressions.Regex.Replace(
+        connStr,
+        @"(Password=|password=|:)([^;@]+)(@|;|$)",
+        "$1***$3",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    var envConnStr = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+    var envSet = !string.IsNullOrEmpty(envConnStr);
+
+    var db = sp.GetRequiredService<JobsApi.Infrastructure.Persistence.JobsDbContext>();
+    bool canConnect = false;
+    string dbError = "";
+    try
+    {
+        canConnect = await db.Database.CanConnectAsync();
+    }
+    catch (Exception ex)
+    {
+        dbError = ex.Message;
+    }
+
+    int userCount = 0;
+    if (canConnect)
+    {
+        try { userCount = await db.Users.CountAsync(); } catch { }
+    }
+
+    return Results.Ok(new
+    {
+        timestamp = DateTime.UtcNow,
+        environment = app.Environment.EnvironmentName,
+        connectionString_source = envSet ? "ENV_VAR (correct!)" : "appsettings.json (default — DB NOT CONFIGURED)",
+        env_var_set = envSet,
+        env_var_name = "ConnectionStrings__DefaultConnection",
+        env_var_preview = envSet ? (envConnStr.Length > 50 ? envConnStr.Substring(0, 50) + "..." : envConnStr) : "(not set)",
+        connection_string_masked = masked,
+        can_reach_database = canConnect,
+        db_error = string.IsNullOrEmpty(dbError) ? null : dbError,
+        users_in_db = userCount,
+        hint = envSet
+            ? (canConnect ? "✅ DB is connected and reachable. Login should work."
+                          : "❌ Env var is set but DB connection failed. Check the connection string value.")
+            : "❌ Set the 'ConnectionStrings__DefaultConnection' env var on Render to your Postgres Internal Database URL."
+    });
+});
+
 // Root route — friendly landing so visiting the URL in a browser doesn't 404.
 // (The service is an API-only backend; this just makes the root URL informative.)
 app.MapGet("/", () => Results.Ok(new
