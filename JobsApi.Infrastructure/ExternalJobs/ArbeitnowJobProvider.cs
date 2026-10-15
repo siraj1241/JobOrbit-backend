@@ -159,14 +159,10 @@ public class ArbeitnowJobProvider : IExternalJobProvider
 
     // --- POCOs matching the Arbeitnow JSON contract ---
     // Top-level response: { "data": [...jobs], "links": {...}, "meta": {...} }
-    // We only need the "data" array. The Count field is for our fallback only.
+    // We only need the "data" array.
     private sealed record ArbeitnowResponse(
         [property: System.Text.Json.Serialization.JsonPropertyName("data")]
-        ArbeitnowJob[]? Jobs)
-    {
-        public ArbeitnowResponse() : this(null) { }
-        public ArbeitnowResponse(ArbeitnowJob[] jobs) : this(jobs) { }
-    }
+        ArbeitnowJob[]? Jobs);
 
     private sealed record ArbeitnowJob
     {
