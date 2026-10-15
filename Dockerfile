@@ -2,7 +2,11 @@
 #  JobOrbit Backend — Multi-stage Dockerfile
 #  Target: Render.com (Web Service)
 #
-#  Image size ~120 MB (chiseled .NET 9 runtime, no SDK in final stage).
+#  Uses the standard aspnet:9.0 runtime (NOT chiseled) because:
+#   - chiseled images lack ICU → globalization crash on startup
+#   - chiseled images lack curl → HEALTHCHECK can't run
+#   - chiseled images lack the 'app' user → can't USER app
+#  Image size ~190 MB (vs ~120 MB chiseled). Trade-off: works out of the box.
 # ─────────────────────────────────────────────────────────────────────
 
 # ─── Stage 1: build ──────────────────────────────────────────────────
@@ -26,25 +30,29 @@ RUN dotnet publish JoborbitApi/JoborbitApi.csproj \
     /p:UseAppHost=false
 
 # ─── Stage 2: runtime ────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-noble-chiseled AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Non-root user for security (chiseled images ship with `app` user)
-USER app
+# Create a non-root user for security
+RUN groupadd --gid 1001 app \
+ && useradd  --uid 1001 --gid app --shell /bin/bash --create-home app
 
 # Copy the published output from the build stage
 COPY --from=build /app/publish ./
+RUN chown -R app:app /app
+
+USER app
 
 # Render injects the PORT env var — ASP.NET listens on it automatically
 # when we set ASPNETCORE_URLS=http://+:${PORT}.
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
-    DOTNET_PRINT_TELEMETRY=false \
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+    DOTNET_PRINT_TELEMETRY=false
 
 EXPOSE 8080
 
 # Health check: probe the /health endpoint every 30s
+# (curl is available in the standard aspnet:9.0 image)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fs http://localhost:8080/health || exit 1
 
