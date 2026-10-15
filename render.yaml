@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────
+#  Render Blueprint — JobOrbit (Backend + Frontend + Postgres)
+#
+#  Usage:
+#    1. Push both repos to GitHub.
+#    2. In Render Dashboard → New → Blueprint → pick this file.
+#    3. Set the secret env vars below when prompted.
+#
+#  Services created:
+#    - joborbit-db        (PostgreSQL 16)
+#    - joborbit-api       (Web Service — .NET 9 backend)
+#    - joborbit-web       (Web Service — nginx + Vite frontend)
+# ─────────────────────────────────────────────────────────────────────
+
+databases:
+  - name: joborbit-db
+    databaseName: joborbit
+    ipAllowList: []
+    plan: free
+
+services:
+  # ─── Backend (.NET 9 Web API) ────────────────────────────────────
+  - type: web
+    name: joborbit-api
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ConnectionStrings__DefaultConnection
+        fromDatabase:
+          name: joborbit-db
+          property: connectionString
+      - key: Jwt__Secret
+        sync: false          # set interactively in Render dashboard (min 32 chars)
+      - key: Jwt__Issuer
+        value: JobOrbit
+      - key: Jwt__Audience
+        value: JobOrbit.Clients
+      - key: ExternalJobs__OpenAiApiKey
+        sync: false          # optional — required only for AI resume bullet generator
+      - key: ExternalJobs__AdzunaAppId
+        sync: false          # optional — required only for Adzuna provider
+      - key: ExternalJobs__AdzunaAppKey
+        sync: false          # optional — required only for Adzuna provider
+      - key: ExternalJobs__TheMuseApiKey
+        sync: false          # optional — works without key
+
+  # ─── Frontend (Vite + nginx) ─────────────────────────────────────
+  - type: web
+    name: joborbit-web
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_URL
+        value: https://joborbit-api.onrender.com/api
+        # Replace with the actual Render URL of joborbit-api once deployed.
+        # Render assigns the URL after the first deploy of the API service.

@@ -1,0 +1,37 @@
+# ─── Build artifacts ─────────────────────────────
+**/bin/
+**/obj/
+**/out/
+**/publish/
+
+# ─── IDE / editor ────────────────────────────────
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+
+# ─── Local dev / test ────────────────────────────
+**/.dotnet/
+**/.vscode/
+**/TestResults/
+**/*.Tests/**
+**/node_modules/
+
+# ─── Source control ─────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ─── Docker ──────────────────────────────────────
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# ─── Docs / config that shouldn't bloat the image
+*.md
+LICENSE
+README.md
+**/appsettings.Development.json
+**/appsettings.Local.json
