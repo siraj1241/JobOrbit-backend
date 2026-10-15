@@ -40,17 +40,18 @@ public class ExternalJobAggregator : IExternalJobAggregator
             try
             {
                 var results = await p.FetchAsync(query, ct);
-                // Stamp each result with its source provider name
-                foreach (var r in results)
-                {
-                    if (string.IsNullOrEmpty(r.Source)) r = r with { Source = p.Name };
-                }
-                return (Provider: p.Name, Results: results, Error: (string?)null);
+                // Stamp each result with its source provider name (LINQ Select
+                // produces a new list rather than mutating in place — foreach
+                // iteration variables can't be reassigned).
+                var stamped = results
+                    .Select(r => string.IsNullOrEmpty(r.Source) ? r with { Source = p.Name } : r)
+                    .ToList();
+                return (Provider: p.Name, Results: (IReadOnlyList<ExternalJobDto>)stamped, Error: (string?)null);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Provider {Provider} failed: {Message}", p.Name, ex.Message);
-                return (Provider: p.Name, Results: Array.Empty<ExternalJobDto>(), Error: ex.Message);
+                return (Provider: p.Name, Results: (IReadOnlyList<ExternalJobDto>)Array.Empty<ExternalJobDto>(), Error: ex.Message);
             }
         });
 

@@ -132,6 +132,13 @@ public class AdzunaJobProvider : IExternalJobProvider
     {
         public AdzunaJob[]? Results { get; set; }
         public int Count { get; set; }
+
+        public AdzunaResponse() { }
+        public AdzunaResponse(AdzunaJob[]? results, int count)
+        {
+            Results = results;
+            Count = count;
+        }
     }
 
     private sealed class AdzunaJob

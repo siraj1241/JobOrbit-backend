@@ -53,7 +53,7 @@ public class TheMuseJobProvider : IExternalJobProvider
         var response = await SendWithRetryAsync(qs, ct);
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         var payload = await JsonSerializer.DeserializeAsync<TheMuseResponse>(stream, JsonOpts, ct)
-                      ?? new TheMuseResponse(Array.Empty<TheMuseJob>(), 0);
+                      ?? new TheMuseResponse(Array.Empty<TheMuseJob>(), 0, 0);
 
         IEnumerable<TheMuseJob> filtered = payload.Jobs ?? Array.Empty<TheMuseJob>();
         if (query.Remote.HasValue) filtered = filtered.Where(j => j.Locations?.Any(l => l.Name == "Remote") == query.Remote.Value);
