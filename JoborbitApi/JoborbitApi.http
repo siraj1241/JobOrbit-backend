@@ -20,28 +20,143 @@ Content-Type: application/json
   "password": "Password@123"
 }
 
-### Get current user (requires Bearer token)
+### Get current user
 GET {{JoborbitApi_HostAddress}}/api/account/me
 Authorization: Bearer <your-jwt-token-here>
 
+### Upgrade to Employer role (requires auth)
+POST {{JoborbitApi_HostAddress}}/api/account/upgrade-to-employer
+Authorization: Bearer <your-jwt-token-here>
+Content-Type: application/json
+
+{
+  "companyName": "Acme Corp"
+}
+
 ### ─── Jobs API ───────────────────────────────────────
 
-### Live fetch jobs from external provider (Arbeitnow) — not persisted
+### Live fetch jobs from ALL external providers (Arbeitnow + TheMuse + Himalayas + Adzuna)
 GET {{JoborbitApi_HostAddress}}/api/jobs/external?page=1&pageSize=20
 Accept: application/json
 
-### Live fetch with filters
-GET {{JoborbitApi_HostAddress}}/api/jobs/external?search=python&location=remote&remote=true&page=1
-Accept: application/json
-
-### Search locally cached jobs (with pagination & filters)
+### Search locally cached + internal published jobs (unified)
 GET {{JoborbitApi_HostAddress}}/api/jobs?search=developer&remote=true&page=1&pageSize=20
 Accept: application/json
 
-### Get a single cached job by ID
-GET {{JoborbitApi_HostAddress}}/api/jobs/3fa85f64-5717-4562-b3fc-2c963f66afa6
-Accept: application/json
-
-### Sync jobs from external provider into local DB (requires auth)
+### Sync external jobs into DB (requires auth)
 POST {{JoborbitApi_HostAddress}}/api/jobs/sync?maxPages=2
 Authorization: Bearer <your-jwt-token-here>
+
+### ─── Employer Jobs API (requires Employer role) ──────────
+
+### List my job postings
+GET {{JoborbitApi_HostAddress}}/api/employer/jobs
+Authorization: Bearer <employer-jwt>
+
+### Create a new job posting
+POST {{JoborbitApi_HostAddress}}/api/employer/jobs
+Authorization: Bearer <employer-jwt>
+Content-Type: application/json
+
+{
+  "title": "Senior React Developer",
+  "description": "We're looking for a senior frontend engineer to lead our React migration.",
+  "location": "Remote",
+  "remote": true,
+  "employmentType": "Full-time",
+  "salaryMin": 120000,
+  "salaryMax": 160000,
+  "salaryCurrency": "USD",
+  "tagsCsv": "react,typescript,aws",
+  "applicationUrl": "https://acme.example.com/apply/123",
+  "applicationInstructions": "Send your portfolio along with the application.",
+  "applicationDeadline": "2026-12-31T23:59:59Z",
+  "status": "Published"
+}
+
+### Update a posting
+PUT {{JoborbitApi_HostAddress}}/api/employer/jobs/<job-id>
+Authorization: Bearer <employer-jwt>
+Content-Type: application/json
+
+{
+  "title": "Senior React Developer (Updated)",
+  "description": "Updated description.",
+  "location": "Remote",
+  "remote": true,
+  "employmentType": "Full-time",
+  "salaryMin": 130000,
+  "salaryMax": 170000,
+  "salaryCurrency": "USD",
+  "tagsCsv": "react,typescript,aws,nextjs",
+  "applicationUrl": "https://acme.example.com/apply/123",
+  "applicationInstructions": null,
+  "applicationDeadline": null,
+  "status": "Published"
+}
+
+### Delete a posting
+DELETE {{JoborbitApi_HostAddress}}/api/employer/jobs/<job-id>
+Authorization: Bearer <employer-jwt>
+
+### ─── Resume Builder (requires auth) ─────────────────────
+
+### Get my resume
+GET {{JoborbitApi_HostAddress}}/api/resume
+Authorization: Bearer <your-jwt>
+
+### Create or replace my resume
+PUT {{JoborbitApi_HostAddress}}/api/resume
+Authorization: Bearer <your-jwt>
+Content-Type: application/json
+
+{
+  "fullName": "Alex Morgan",
+  "headline": "Senior Frontend Engineer",
+  "email": "alex@example.com",
+  "phone": "+1-555-0100",
+  "location": "Austin, TX",
+  "summary": "Senior frontend engineer with 8 years building accessible, performant web apps at scale.",
+  "experience": [
+    {
+      "company": "Paperplane",
+      "title": "Senior Frontend Engineer",
+      "startDate": "2022-03-01",
+      "endDate": null,
+      "current": true,
+      "location": "Remote",
+      "bulletPoints": [
+        "Led migration from Angular to React, reducing bundle size by 40%.",
+        "Built design system used by 12 product teams."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "UT Austin",
+      "degree": "B.S. Computer Science",
+      "startDate": "2014-09-01",
+      "endDate": "2018-05-01",
+      "field": "Computer Science"
+    }
+  ],
+  "skills": ["React", "TypeScript", "Node.js", "AWS"]
+}
+
+### Generate AI-tailored bullets (requires OpenAI API key configured on server)
+POST {{JoborbitApi_HostAddress}}/api/resume/generate-bullets
+Authorization: Bearer <your-jwt>
+Content-Type: application/json
+
+{
+  "company": "Google",
+  "title": "Staff Frontend Engineer",
+  "existingSummary": "Senior frontend engineer with React expertise.",
+  "jobDescription": "We're seeking a staff engineer to lead our web platform team..."
+}
+
+### Delete my resume
+DELETE {{JoborbitApi_HostAddress}}/api/resume
+Authorization: Bearer <your-jwt>
+
+###

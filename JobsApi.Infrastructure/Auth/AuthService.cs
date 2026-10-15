@@ -93,4 +93,33 @@ public class AuthService : IAuthService
             DisplayName: user.DisplayName,
             Role: user.Role);
     }
+
+    public async Task<AuthResultDto> UpgradeToEmployerAsync(
+        Guid userId, string companyName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(companyName))
+            throw new DomainException("CompanyName is required to upgrade to Employer.");
+
+        var user = await _users.GetByIdAsync(userId, ct)
+            ?? throw new UnauthorizedException("User not found.");
+
+        if (user.Role == "Employer")
+            throw new DomainException("User is already an Employer.");
+
+        user.Role = "Employer";
+        user.CompanyName = companyName.Trim();
+        await _users.UpdateAsync(user, ct);
+
+        var accessToken = _tokens.GenerateAccessToken(user);
+        _logger.LogInformation("User {UserId} upgraded to Employer ({Company}).", userId, companyName);
+
+        return new AuthResultDto(
+            AccessToken: accessToken,
+            TokenType: "Bearer",
+            ExpiresIn: _opts.AccessMinutes * 60,
+            UserId: user.Id.ToString(),
+            Email: user.Email,
+            DisplayName: user.DisplayName,
+            Role: user.Role);
+    }
 }

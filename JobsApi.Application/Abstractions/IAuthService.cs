@@ -6,4 +6,5 @@ public interface IAuthService
 {
     Task<AuthResultDto> LoginAsync(LoginDto dto, CancellationToken ct);
     Task<AuthResultDto> RegisterAsync(RegisterDto dto, CancellationToken ct);
+    Task<AuthResultDto> UpgradeToEmployerAsync(Guid userId, string companyName, CancellationToken ct);
 }

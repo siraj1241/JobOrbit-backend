@@ -3,8 +3,8 @@ using JobsApi.Application.Dtos;
 namespace JobsApi.Application.Abstractions;
 
 /// <summary>
-/// Abstraction over an external job-board provider (Arbeitnow, TheMuse, etc.).
-/// Implementations live in the Infrastructure layer and call real HTTP APIs.
+/// Abstraction over an external job-board provider (Arbeitnow, TheMuse, Himalayas, Adzuna).
+/// Each implementation is a typed HttpClient registered in DI.
 /// </summary>
 public interface IExternalJobProvider
 {
@@ -15,6 +15,16 @@ public interface IExternalJobProvider
     Task<IReadOnlyList<ExternalJobDto>> FetchAsync(
         ExternalJobsQueryDto query,
         CancellationToken ct);
+}
+
+/// <summary>
+/// Composite provider that aggregates results from all registered
+/// IExternalJobProvider implementations in parallel and merges them.
+/// </summary>
+public interface IExternalJobAggregator
+{
+    /// <summary>Fetch jobs from ALL registered providers and merge by ExternalId.</summary>
+    Task<IReadOnlyList<ExternalJobDto>> FetchAllAsync(ExternalJobsQueryDto query, CancellationToken ct);
 }
 
 /// <summary>Provider-agnostic job DTO returned by external providers.</summary>
@@ -28,4 +38,5 @@ public record ExternalJobDto(
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> JobTypes,
     string Url,
-    DateTime PublishedAt);
+    DateTime PublishedAt,
+    string? Source = null);

@@ -145,7 +145,8 @@ public class ArbeitnowJobProvider : IExternalJobProvider
         Tags: (j.Tags ?? Array.Empty<string>()).ToList(),
         JobTypes: (j.JobTypes ?? Array.Empty<string>()).ToList(),
         Url: j.Url ?? string.Empty,
-        PublishedAt: ParseDate(j.CreatedAt));
+        PublishedAt: ParseDate(j.CreatedAt),
+        Source: "Arbeitnow");
 
     private static DateTime ParseDate(string? iso)
         => DateTime.TryParse(iso, out var d) ? d : DateTime.UtcNow;

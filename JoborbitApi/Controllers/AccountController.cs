@@ -1,5 +1,6 @@
 ﻿using JobsApi.Application.Abstractions;
 using JobsApi.Application.Dtos;
+using JobsApi.Domain.Exceptions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -28,6 +29,20 @@ public class AccountController(IAuthService auth, ILogger<AccountController> log
             nameof(Me),
             new { },
             result);
+    }
+
+    /// <summary>Upgrade the currently-authenticated user to Employer role.</summary>
+    [HttpPost("upgrade-to-employer")]
+    [Authorize]
+    [ProducesResponseType(typeof(AuthResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> UpgradeToEmployer(
+        [FromBody] UpgradeToEmployerDto dto, CancellationToken ct)
+    {
+        var userId = User.FindFirst("sub")?.Value
+            ?? throw new UnauthorizedException("User ID not found in token.");
+        var result = await auth.UpgradeToEmployerAsync(Guid.Parse(userId), dto.CompanyName, ct);
+        return Ok(result);
     }
 
     [HttpGet("me")]
