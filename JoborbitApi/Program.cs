@@ -103,7 +103,7 @@ var app = builder.Build();
 app.UseMiddleware<ExceptionMiddleware>();
 
 // Lightweight health probe for Render / Docker / k8s
-app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp: DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
 if (app.Environment.IsDevelopment())
 {
