@@ -33,13 +33,12 @@ RUN dotnet publish JoborbitApi/JoborbitApi.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Create a non-root user for security
-RUN groupadd --gid 1001 app \
- && useradd  --uid 1001 --gid app --shell /bin/bash --create-home app
+# The standard aspnet:9.0 image already ships with an 'app' group + user
+# (UID 101). We just use them directly — no need to create anything.
+# https://github.com/dotnet/dotnet-docker/blob/main/src/runtime-deps/9.0/noble/amd64/Dockerfile
 
 # Copy the published output from the build stage
 COPY --from=build /app/publish ./
-RUN chown -R app:app /app
 
 USER app
 
