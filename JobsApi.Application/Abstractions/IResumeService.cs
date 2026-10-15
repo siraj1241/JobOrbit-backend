@@ -1,3 +1,4 @@
+using JobsApi.Application.Dtos;
 using JobsApi.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 

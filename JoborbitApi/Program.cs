@@ -107,6 +107,34 @@ builder.Services
 builder.Services.AddAuthorization();
 
 // ─────────────────────────────────────────────────────────
+//  CORS — allow any *.onrender.com subdomain (for the frontend) plus
+//  localhost for local development. This avoids hardcoding the exact
+//  frontend URL since Render assigns random suffixes.
+// ─────────────────────────────────────────────────────────
+const string CorsPolicyName = "joborbit-frontend";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(CorsPolicyName, policy =>
+    {
+        policy.SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrEmpty(origin)) return false;
+                // Allow any Render subdomain
+                if (origin.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    && origin.EndsWith(".onrender.com", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                // Allow localhost on any port (dev only)
+                if (origin.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                return false;
+            })
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
+// ─────────────────────────────────────────────────────────
 //  Build the app pipeline
 // ─────────────────────────────────────────────────────────
 var app = builder.Build();
@@ -114,8 +142,34 @@ var app = builder.Build();
 // Global exception handler → ProblemDetails
 app.UseMiddleware<ExceptionMiddleware>();
 
+// CORS must be called BEFORE auth and endpoint routing
+app.UseCors(CorsPolicyName);
+
 // Lightweight health probe for Render / Docker / k8s
-app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp: DateTime.UtcNow }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
+
+// Root route — friendly landing so visiting the URL in a browser doesn't 404.
+// (The service is an API-only backend; this just makes the root URL informative.)
+app.MapGet("/", () => Results.Ok(new
+{
+    name = "JobOrbit API",
+    version = "1.0",
+    status = "running",
+    docs = "/swagger (Development only)",
+    endpoints = new
+    {
+        health = "/health",
+        login = "POST /api/account/login",
+        register = "POST /api/account/register",
+        me = "GET /api/account/me (requires auth)",
+        jobs_external = "GET /api/jobs/external",
+        jobs_search = "GET /api/jobs",
+        employer_jobs = "GET/POST/PUT/DELETE /api/employer/jobs (requires Employer role)",
+        resume = "GET/PUT/DELETE /api/resume (requires auth)",
+        resume_ai = "POST /api/resume/generate-bullets (requires auth + OpenAI key)"
+    },
+    timestamp = DateTime.UtcNow
+}));
 
 if (app.Environment.IsDevelopment())
 {
