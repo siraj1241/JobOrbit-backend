@@ -176,13 +176,43 @@ app.MapGet("/debug/db", async (IConfiguration config, IServiceProvider sp) =>
     }
     catch (Exception ex)
     {
-        dbError = ex.Message;
+        dbError = $"{ex.GetType().Name}: {ex.Message}";
+        if (ex.InnerException != null)
+            dbError += $" | Inner: {ex.InnerException.Message}";
+    }
+
+    // If CanConnectAsync returned false without throwing, try a raw query
+    // to force the underlying exception to surface.
+    if (!canConnect && string.IsNullOrEmpty(dbError))
+    {
+        try
+        {
+            _ = await db.Users.AnyAsync();
+        }
+        catch (Exception ex)
+        {
+            dbError = $"{ex.GetType().Name}: {ex.Message}";
+            if (ex.InnerException != null)
+                dbError += $" | Inner: {ex.InnerException.Message}";
+        }
     }
 
     int userCount = 0;
     if (canConnect)
     {
         try { userCount = await db.Users.CountAsync(); } catch { }
+    }
+
+    // Detect IPv6-only hostname (common Supabase gotcha)
+    string ipv6Warning = "";
+    if (masked.Contains("db.", StringComparison.OrdinalIgnoreCase)
+        && masked.Contains(".supabase.co", StringComparison.OrdinalIgnoreCase)
+        && !masked.Contains("pooler", StringComparison.OrdinalIgnoreCase))
+    {
+        ipv6Warning = "⚠️ You're using the Supabase DIRECT hostname (db.*.supabase.co) " +
+                      "which is IPv6-only. Render containers don't have IPv6 → connection fails. " +
+                      "Fix: use the Supabase POOLER hostname (aws-0-<region>.pooler.supabase.com) instead. " +
+                      "Find it in Supabase Dashboard → Settings → Database → Connection string → Connection pooling.";
     }
 
     return Results.Ok(new
@@ -197,9 +227,10 @@ app.MapGet("/debug/db", async (IConfiguration config, IServiceProvider sp) =>
         can_reach_database = canConnect,
         db_error = string.IsNullOrEmpty(dbError) ? null : dbError,
         users_in_db = userCount,
+        ipv6_warning = string.IsNullOrEmpty(ipv6Warning) ? null : ipv6Warning,
         hint = envSet
             ? (canConnect ? "✅ DB is connected and reachable. Login should work."
-                          : "❌ Env var is set but DB connection failed. Check the connection string value.")
+                          : "❌ Env var is set but DB connection failed. See db_error + ipv6_warning for the cause.")
             : "❌ Set the 'ConnectionStrings__DefaultConnection' env var on Render to your Postgres Internal Database URL."
     });
 });
