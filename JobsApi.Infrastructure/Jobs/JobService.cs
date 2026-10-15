@@ -26,15 +26,15 @@ public class JobService : IJobService
         CancellationToken ct)
     {
         var external = await _provider.FetchAsync(query, ct);
-        var items = external.Select(MapToDto).ToList();
+        var items = external.Select(MapExternalToDto).ToList();
         var total = items.Count;
 
         return new PagedResultDto<JobDto>(
-            items,
-            query.Page,
-            query.PageSize,
-            total,
-            totalPages: (int)Math.Ceiling(total / (double)Math.Max(1, query.PageSize)));
+            Items: items,
+            Page: query.Page,
+            PageSize: query.PageSize,
+            TotalItems: total,
+            TotalPages: (int)Math.Ceiling(total / (double)Math.Max(1, query.PageSize)));
     }
 
     public async Task<PagedResultDto<JobDto>> SearchAsync(
@@ -53,11 +53,11 @@ public class JobService : IJobService
         var dtos = items.Select(MapToDto).ToList();
 
         return new PagedResultDto<JobDto>(
-            dtos,
-            query.Page,
-            query.PageSize,
-            total,
-            totalPages: (int)Math.Ceiling(total / (double)Math.Max(1, query.PageSize)));
+            Items: dtos,
+            Page: query.Page,
+            PageSize: query.PageSize,
+            TotalItems: total,
+            TotalPages: (int)Math.Ceiling(total / (double)Math.Max(1, query.PageSize)));
     }
 
     public async Task<JobDto?> GetByIdAsync(Guid id, CancellationToken ct)
@@ -156,6 +156,21 @@ public class JobService : IJobService
         existing.PublishedAt = ext.PublishedAt;
         existing.CachedAt = DateTime.UtcNow;
     }
+
+    private static JobDto MapExternalToDto(ExternalJobDto ext) => new(
+        Id: Guid.Empty,                  // external jobs have no local ID yet
+        ExternalId: ext.ExternalId,
+        Source: "Arbeitnow",
+        Title: ext.Title,
+        CompanyName: ext.CompanyName,
+        Description: ext.Description,
+        Location: ext.Location,
+        Remote: ext.Remote,
+        Tags: ext.Tags,
+        JobTypes: ext.JobTypes,
+        Url: ext.Url,
+        PublishedAt: ext.PublishedAt,
+        CachedAt: DateTime.UtcNow);
 
     private static JobDto MapToDto(Job j) => new(
         Id: j.Id,
