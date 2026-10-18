@@ -52,6 +52,9 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IExternalJobProvider, TheMuseJobProvider>();
         services.AddHttpClient<IExternalJobProvider, AdzunaJobProvider>();
 
+        // Built-in sample jobs (no HTTP, no DB — always available)
+        services.AddSingleton<IExternalJobProvider, SampleJobsProvider>();
+
         // Internal jobs (employer)
         services.AddScoped<IInternalJobRepository, InternalJobRepository>();
         services.AddScoped<IInternalJobService, InternalJobService>();
